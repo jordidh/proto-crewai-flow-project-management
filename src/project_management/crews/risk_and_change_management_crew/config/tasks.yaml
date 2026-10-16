@@ -1,0 +1,136 @@
+task_update_risk_register:
+  description: >
+    Audit the current plans of {project_name} and any emerging issues,
+    risks, or external conditions, and update the risk register.
+
+    Trigger: {trigger_reason}
+
+    Emerging issues, risks, or external conditions (may be empty):
+    {emerging_conditions}
+
+    Proposed change request (may be empty):
+    {change_request}
+
+    Business Case:
+    {business_case}
+
+    Project Charter:
+    {project_charter}
+
+    WBS:
+    {wbs}
+
+    Backlog:
+    {backlog}
+
+    Schedule model:
+    {schedule_model}
+
+    Previously approved risk register (empty on first assessment):
+    {existing_risk_register}
+
+    Draft one markdown document, the Risk Register, containing:
+    - Complexity drivers of the project (technical, organizational, vendor,
+      regulatory, people) and the overall project risk exposure.
+    - The risk scales used: Probability (1-5) and Impact (1-5) definitions,
+      and the score thresholds for low, medium, high, and critical.
+    - A risk table with: ID, category (technical, vendor, resource,
+      schedule, cost, external, ...), threat or opportunity, risk statement
+      (cause - event - effect), affected WBS work packages or backlog items,
+      probability, impact, score (Probability x Impact), ranking, response
+      strategy (avoid, mitigate, transfer, accept, escalate for threats;
+      exploit, enhance, share, accept for opportunities), mitigation or
+      response steps, trigger/early warning signs, risk owner (role), and
+      status (open, monitoring, closed).
+    - A top risks section, ordered by score, with contingency plans.
+    - Contingency reserves for schedule (days) and cost, with how they were
+      sized.
+    - Issues that have already materialized, linked to the risks they come
+      from.
+
+    Versioning rules:
+    - Start with a header block containing the document title, project name,
+      current version, and date ({current_date}).
+    - Include a "Changelog" table with columns: Version | Date | Change
+      Description.
+    - If no previous version exists, use version 1.0 with a single
+      "Initial version" changelog entry.
+    - If a previous version exists, keep its changelog rows and existing risk
+      IDs, bump the version (minor for reassessments, major when the overall
+      risk profile changes), and add a new row describing what changed and
+      why.
+
+    Where information is missing, state explicit assumptions instead of
+    inventing facts.
+  expected_output: >
+    A complete markdown document (without wrapping '```'): the Risk
+    Register, with a version header and changelog table.
+  agent: risk_assessor_agent
+
+task_evaluate_and_log_changes:
+  description: >
+    Assess the proposed scope/schedule changes of {project_name} against the
+    approved baselines and the updated risk register.
+
+    Trigger: {trigger_reason}
+
+    Proposed change request (empty when no change was proposed):
+    {change_request}
+
+    Emerging issues, risks, or external conditions (may be empty):
+    {emerging_conditions}
+
+    Business Case (cost baseline / BAC):
+    {business_case}
+
+    Schedule model (schedule baseline and critical path):
+    {schedule_model}
+
+    Previously approved artifacts (empty on first assessment):
+    {existing_change_log}
+
+    {existing_change_request_rfc}
+
+    For each proposed change, estimate its critical path delay (days) and
+    its cost delta (% of the affected work package budget and of the BAC),
+    and apply the tolerance thresholds:
+    - Thresholds are breached if the critical path delay exceeds 3 days OR
+      the cost delta exceeds 5% of the work package budget or of the BAC.
+    - If breached, the change requires a formal Change Request (RFC).
+    - Otherwise, log and authorize an operational fast-track replan.
+
+    Draft these markdown documents:
+
+    1. Change Log: table of every change with ID, date, description,
+       requester, affected baselines (scope, schedule, cost), affected WBS
+       work packages or backlog items, critical path delay (days), cost
+       delta (%), thresholds breached (yes/no), decision (fast-track
+       replan or formal RFC), status, and linked risks. If no change was
+       proposed, keep the existing entries and record nothing new.
+    2. Change Request (RFC), ONLY if any threshold is breached: RFC ID,
+       requester, date, description and justification, alternatives
+       considered, impact analysis (scope, schedule, cost, quality, risk,
+       resources), threshold breach evidence, recommended option, required
+       approvals (Change Control Board per the governance model), and the
+       approval/decision section. Leave it empty when no threshold is
+       breached.
+
+    Versioning rules for EACH document:
+    - Start with a header block containing the document title, project name,
+      current version, and date ({current_date}).
+    - Include a "Changelog" table with columns: Version | Date | Change
+      Description.
+    - If no previous version exists, use version 1.0 with a single
+      "Initial version" changelog entry.
+    - If a previous version exists, keep its changelog rows, bump the version
+      (minor for new log entries or refinements, major for a new RFC), and
+      add a new row describing what changed and why.
+
+    Where information is missing, state explicit assumptions instead of
+    inventing facts.
+  expected_output: >
+    The Change Log markdown document and, only if thresholds are breached,
+    the Change Request (RFC) markdown document (without wrapping '```'),
+    each with a version header and changelog table, plus the quantified
+    critical path delay, cost delta, and the resulting decision.
+  agent: change_control_arbiter

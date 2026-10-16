@@ -1,0 +1,94 @@
+task_create_business_case_and_charter:
+  description: >
+    Review the preliminary business requirements, notes, or client meeting
+    records for {project_name}.
+
+    Trigger: {trigger_reason}
+
+    Preliminary input:
+    {project_brief}
+
+    Previously approved artifacts (empty on project inception):
+    {existing_business_case}
+
+    {existing_project_charter}
+
+    Draft two markdown documents:
+
+    1. Business Case: problem/opportunity statement, strategic drivers and
+       alignment, expected benefits (quantified where possible), costs and
+       ROI estimate, options considered, risks and assumptions, recommended
+       development approach (predictive, adaptive, or hybrid) with its
+       justification, and the product life cycle definition.
+    2. Project Charter: purpose and objectives, high-level scope (in/out),
+       high-level requirements, key deliverables and milestones, constraints,
+       assumptions, high-level risks, delivery cadence, success criteria,
+       sponsor and project manager authority, and approval section.
+
+    Versioning rules for EACH document:
+    - Start with a header block containing the document title, project name,
+      current version, and date ({current_date}).
+    - Include a "Changelog" table with columns: Version | Date | Change
+      Description.
+    - If no previous version exists, use version 1.0 with a single
+      "Initial version" changelog entry.
+    - If a previous version exists, keep its changelog rows, bump the version
+      (minor for refinements, major for renegotiated strategic objectives),
+      and add a new row describing what changed and why.
+
+    Where information is missing, state explicit assumptions instead of
+    inventing facts.
+  expected_output: >
+    Two complete markdown documents (without wrapping '```'): the Business
+    Case and the Project Charter, each with a version header and changelog
+    table.
+  agent: strategic_value_agent
+
+task_map_stakeholders_and_team_charter:
+  description: >
+    Using the Business Case and Project Charter for {project_name}, and the
+    preliminary input below, establish the stakeholder and governance model.
+
+    Trigger: {trigger_reason}
+
+    Preliminary input:
+    {project_brief}
+
+    Previously approved artifacts (empty on project inception):
+    {existing_stakeholder_register}
+
+    {existing_team_charter}
+
+    Draft two markdown documents:
+
+    1. Stakeholder Register: table of internal and external stakeholders
+       (name/group, role, organization, expectations, power, influence,
+       interest, current vs. desired engagement level), a power/interest
+       classification (manage closely, keep satisfied, keep informed,
+       monitor), the RACI governance matrix for key decisions and
+       deliverables, and the communication plan (audience, information,
+       cadence, channel, owner).
+    2. Team Charter: team values, working norms and operating agreements,
+       meeting cadence and ceremonies aligned with the delivery approach,
+       decision-making process, communication channels and response
+       expectations, conflict resolution, definition of done/quality
+       expectations, and how the charter is reviewed.
+
+    Versioning rules for EACH document:
+    - Start with a header block containing the document title, project name,
+      current version, and date ({current_date}).
+    - Include a "Changelog" table with columns: Version | Date | Change
+      Description.
+    - If no previous version exists, use version 1.0 with a single
+      "Initial version" changelog entry.
+    - If a previous version exists, keep its changelog rows, bump the version
+      (minor for refinements, major for renegotiated strategic objectives),
+      and add a new row describing what changed and why.
+
+    Where information is missing, state explicit assumptions instead of
+    inventing facts.
+  expected_output: >
+    Two complete markdown documents (without wrapping '```'): the Stakeholder
+    Register (including the RACI matrix and communication plan) and the Team
+    Charter, each with a version header and changelog table.
+  agent: stakeholder_alignment_agent

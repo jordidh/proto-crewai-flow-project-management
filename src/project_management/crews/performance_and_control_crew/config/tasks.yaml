@@ -1,0 +1,130 @@
+task_calculate_evm_metrics:
+  description: >
+    Calculate the earned value metrics of {project_name} at the status date
+    {status_date}.
+
+    Trigger: {trigger_reason}
+
+    Reported progress: actual spend (AC) and physical percent complete per
+    work package or backlog item (empty if no actuals were reported yet):
+    {progress_data}
+
+    Business Case (cost baseline / BAC):
+    {business_case}
+
+    Schedule model (schedule baseline):
+    {schedule_model}
+
+    WBS:
+    {wbs}
+
+    Backlog:
+    {backlog}
+
+    Change Log (approved changes that alter the baselines):
+    {change_log}
+
+    Previous EVM metrics (empty on the first measurement):
+    {existing_evm_metrics}
+
+    Steps:
+    1. Derive the BAC and the time-phased planned value from the cost and
+       schedule baselines, including approved changes.
+    2. For each work package (or epic/feature for adaptive components)
+       compute BAC, PV, EV (BAC x physical % complete), and AC.
+    3. Compute the project totals and the indexes, using these formulas:
+       CV = EV - AC; SV = EV - PV; CPI = EV / AC; SPI = EV / PV;
+       EAC (state the method, by default BAC / CPI); ETC = EAC - AC;
+       VAC = BAC - EAC; TCPI = (BAC - EV) / (BAC - AC).
+       Leave an index empty (null) when its denominator is zero.
+    4. Build the S-curve tracking series: one point per reporting period
+       from the project start to the project end, with the cumulative
+       planned value for every period and the cumulative earned value and
+       actual cost for the periods up to the status date.
+    5. If no actuals were reported, measure the project at the status date
+       with EV = 0 and AC = 0, and say so in the assumptions.
+
+    Versioning rules for the metrics:
+    - Use the title "EVM Metrics", the project name, the current version, and
+      date ({current_date}).
+    - Include a changelog with version, date, and change description.
+    - If no previous version exists, use version 1.0 with a single
+      "Initial version" changelog entry.
+    - If a previous version exists, keep its changelog entries, bump the
+      minor version for each new measurement (major if the baseline
+      changed), and add an entry describing the new status date and what
+      changed.
+
+    Where information is missing, state explicit assumptions instead of
+    inventing facts.
+  expected_output: >
+    EVM metrics at the status date with project totals, per work package
+    breakdown, forecasts, the S-curve tracking series, assumptions, version,
+    and changelog.
+  agent: evm_kpi_analyst
+
+task_generate_dashboard_and_reports:
+  description: >
+    Using the EVM metrics of {project_name} at {status_date}, build the
+    executive dashboard and the stakeholder status report.
+
+    Trigger: {trigger_reason}
+
+    Schedule model (milestones and critical path):
+    {schedule_model}
+
+    Stakeholder Register (RACI matrix and communication plan):
+    {stakeholder_register}
+
+    Risk Register:
+    {risk_register}
+
+    Change Log:
+    {change_log}
+
+    Previously issued artifacts (empty on the first report):
+    {existing_project_dashboard}
+
+    {existing_status_report}
+
+    Draft two markdown documents:
+
+    1. Project Dashboard (executive visual radiator):
+       - Overall RAG status and RAG for scope, schedule, cost, quality, and
+         risk, each with the metric that justifies the color. Use these
+         thresholds for CPI and SPI: Green >= 0.95, Amber 0.90-0.95,
+         Red < 0.90 (or null with work overdue).
+       - KPI table: BAC, PV, EV, AC, CV, SV, CPI, SPI, EAC, ETC, VAC, TCPI.
+       - S-curve chart of cumulative PV, EV, and AC as a mermaid
+         "xychart-beta" line chart built from the S-curve series.
+       - Critical milestones table: milestone, baseline date, forecast date,
+         status.
+       - Variance commentary: causes of the main variances and the
+         corrective actions.
+       - Top risks and open changes or RFCs, and the decisions needed.
+    2. Status Report: a short executive summary followed by one
+       communication brief per stakeholder segment from the communication
+       plan, with the information, depth, and asks that match their RACI
+       role (e.g. decisions for accountable stakeholders, actions for
+       responsible ones, highlights for informed ones), and the next
+       reporting date.
+
+    Versioning rules for EACH document:
+    - Start with a header block containing the document title, project name,
+      current version, status date ({status_date}), and date
+      ({current_date}).
+    - Include a "Changelog" table with columns: Version | Date | Change
+      Description.
+    - If no previous version exists, use version 1.0 with a single
+      "Initial version" changelog entry.
+    - If a previous version exists, keep its changelog rows, bump the minor
+      version for each new reporting period, and add a new row describing
+      the period and what changed.
+
+    Where information is missing, state explicit assumptions instead of
+    inventing facts.
+  expected_output: >
+    Two complete markdown documents (without wrapping '```'): the Project
+    Dashboard and the Status Report, each with a version header and
+    changelog table.
+  agent: reporting_dashboard_agent

@@ -1,0 +1,121 @@
+task_build_wbs_and_backlog:
+  description: >
+    Evaluate the approved charter scope of {project_name}, or the scope
+    change request below, and build the scope baseline.
+
+    Trigger: {trigger_reason}
+
+    Scope change request (empty during baseline planning):
+    {scope_change_request}
+
+    Business Case (defines the development approach and life cycle):
+    {business_case}
+
+    Project Charter:
+    {project_charter}
+
+    Previously approved artifacts (empty during baseline planning):
+    {existing_wbs}
+
+    {existing_backlog}
+
+    {existing_schedule_model}
+
+    Produce:
+
+    1. WBS (markdown) for the predictive components: hierarchical WBS with
+       codes (1, 1.1, 1.1.1, ...) following the 100% rule, where every work
+       package is under 40 hours of effort; a WBS dictionary table (code,
+       name, description, deliverable, effort estimate in hours, duration in
+       days, predecessors with dependency type FS/SS and lag, owner role);
+       and a critical path analysis section (critical path sequence, total
+       project duration, activities with float, key schedule risks).
+    2. Backlog (markdown) for the adaptive/hybrid components: themes, epics,
+       features, and user stories ("As a ..., I want ..., so that ...")
+       with IDs, priority (MoSCoW), story point estimates, and dependencies,
+       structured into a release backlog and iteration backlogs aligned with
+       the delivery cadence in the charter.
+    3. Schedule model (structured data) consistent with the WBS/backlog:
+       every activity with its duration, effort, predecessors, early/late
+       start and finish, total float, and whether it is on the critical
+       path, plus the critical path sequence and total project duration.
+
+    Produce only the documents the development approach calls for: leave
+    the WBS empty for a purely adaptive approach and the backlog empty for a
+    purely predictive one; a hybrid approach needs both.
+
+    Versioning rules for EACH document and for the schedule model:
+    - Start with a header block containing the document title, project name,
+      current version, and date ({current_date}).
+    - Include a "Changelog" table with columns: Version | Date | Change
+      Description.
+    - If no previous version exists, use version 1.0 with a single
+      "Initial version" changelog entry.
+    - If a previous version exists, keep its changelog rows, bump the version
+      (minor for refinements, major for scope changes that alter the
+      baseline), and add a new row describing what changed and why.
+
+    Where information is missing, state explicit assumptions instead of
+    inventing facts.
+  expected_output: >
+    The WBS markdown document and/or the backlog markdown document (without
+    wrapping '```'), each with a version header and changelog table, and a
+    schedule model with activities, dependencies, critical path, and
+    changelog.
+  agent: scope_decomposition_agent
+
+task_define_requirements_and_dod:
+  description: >
+    Take the WBS work packages and user stories of {project_name} to
+    formalize the requirements and delivery criteria.
+
+    Trigger: {trigger_reason}
+
+    Scope change request (empty during baseline planning):
+    {scope_change_request}
+
+    Project Charter:
+    {project_charter}
+
+    Team Charter (quality expectations agreed by the team):
+    {team_charter}
+
+    Previously approved artifacts (empty during baseline planning):
+    {existing_requirements_specification}
+
+    {existing_definition_of_done}
+
+    Draft two markdown documents:
+
+    1. Requirements Specification: functional requirements and
+       non-functional requirements (performance, security, reliability,
+       usability, maintainability, compliance), each with a unique ID,
+       statement, priority, source, acceptance criteria (Given/When/Then
+       where applicable), and verification method (test, inspection,
+       analysis, demonstration); plus a traceability matrix linking every
+       requirement to its WBS work package and/or user story.
+    2. Definition of Done: done criteria at story/work package, feature,
+       iteration/increment, and release levels, covering code quality,
+       testing, documentation, review, security, deployment, and acceptance
+       sign-off, and how the DoD is reviewed and evolved.
+
+    Every requirement must be clear, concise, verifiable, and traceable.
+
+    Versioning rules for EACH document:
+    - Start with a header block containing the document title, project name,
+      current version, and date ({current_date}).
+    - Include a "Changelog" table with columns: Version | Date | Change
+      Description.
+    - If no previous version exists, use version 1.0 with a single
+      "Initial version" changelog entry.
+    - If a previous version exists, keep its changelog rows, bump the version
+      (minor for refinements, major for scope changes that alter the
+      baseline), and add a new row describing what changed and why.
+
+    Where information is missing, state explicit assumptions instead of
+    inventing facts.
+  expected_output: >
+    Two complete markdown documents (without wrapping '```'): the
+    Requirements Specification (including the traceability matrix) and the
+    Definition of Done, each with a version header and changelog table.
+  agent: quality_engineering_agent
