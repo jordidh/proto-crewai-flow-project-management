@@ -1,0 +1,23 @@
+# Project setup document: relates each project code to the folder holding its documents.
+#
+#   uv run run_with_trigger <PROJECT_CODE> [<json payload>]
+#
+# looks up <PROJECT_CODE> here, reads the input documents (project_brief.md,
+# progress_data.md, change request files) from <folder>/<input_dir> and reads and
+# writes the output documents in <folder>/<output_dir>. Each folder must be inside a
+# git repository: every run commits the documents it changed, with its run metrics.
+#
+# Keys per project:
+#   name        project name passed to the crews (defaults to the code)
+#   folder      absolute path, or relative to this file
+#   input_dir   relative to folder (default: input)
+#   output_dir  relative to folder (default: output)
+#
+# Set PROJECTS_SETUP_PATH to use a setup document stored elsewhere.
+
+projects:
+  PRJ-001:
+    name: Warehouse Inventory & Storage Management REST API (WMS Core)
+    folder: ../pm-sample-wms-core
+    input_dir: input
+    output_dir: output

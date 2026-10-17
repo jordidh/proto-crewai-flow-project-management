@@ -12,6 +12,7 @@ from crewai import CrewOutput
 from crewai.flow import Flow, listen, or_, router, start
 
 from project_management.metrics import format_duration, sum_token_usage
+from project_management.project_setup import ProjectSetup, commit_changes, load_project_setup
 
 from project_management.crews.initiation_and_governance_crew.initiation_and_governance_crew import (
     InitiationAndGovernanceCrew,
@@ -28,14 +29,15 @@ from project_management.crews.performance_and_control_crew.performance_and_contr
     PerformanceAndControlCrew,
 )
 
-INITIATION_DIR = Path("output") / "initiation"
+# Output paths are relative to the output folder of the project given in the project setup
+INITIATION_DIR = Path("initiation")
 INITIATION_ARTIFACTS = {
     "business_case": "business_case.md",
     "project_charter": "project_charter.md",
     "stakeholder_register": "stakeholder_register.md",
     "team_charter": "team_charter.md",
 }
-PLANNING_DIR = Path("output") / "planning"
+PLANNING_DIR = Path("planning")
 PLANNING_ARTIFACTS = {
     "wbs": "wbs.md",
     "backlog": "backlog.md",
@@ -43,7 +45,7 @@ PLANNING_ARTIFACTS = {
     "requirements_specification": "requirements_specification.md",
     "definition_of_done": "definition_of_done.md",
 }
-CONTROL_DIR = Path("output") / "control"
+CONTROL_DIR = Path("control")
 CONTROL_ARTIFACTS = {
     "risk_register": "risk_register.md",
     "change_log": "change_log.md",
@@ -52,7 +54,7 @@ CONTROL_ARTIFACTS = {
 # tracked in the register so several RFCs can be pending at the same time
 RFC_DIR = CONTROL_DIR / "rfcs"
 RFC_REGISTER_PATH = CONTROL_DIR / "rfc_register.json"
-PERFORMANCE_DIR = Path("output") / "performance"
+PERFORMANCE_DIR = Path("performance")
 PERFORMANCE_ARTIFACTS = {
     "evm_metrics": "evm_metrics.json",
     "project_dashboard": "project_dashboard.md",
@@ -61,10 +63,10 @@ PERFORMANCE_ARTIFACTS = {
 # Baseline documents the performance measurement depends on (cost and schedule baselines)
 PERFORMANCE_BASELINES = {"business_case", "schedule_model"}
 S_CURVE_PATH = PERFORMANCE_DIR / "s_curve.csv"
-RUN_METRICS_PATH = Path("output") / "logs" / "run_metrics.jsonl"
-INPUT_DIR = Path("input")
-DEFAULT_BRIEF_PATH = INPUT_DIR / "project_brief.md"
-DEFAULT_PROGRESS_PATH = INPUT_DIR / "progress_data.md"
+RUN_METRICS_PATH = Path("logs") / "run_metrics.jsonl"
+# Input file names, in the input folder of the project
+DEFAULT_BRIEF_NAME = "project_brief.md"
+DEFAULT_PROGRESS_NAME = "progress_data.md"
 
 
 def normalize_rfc_id(value: str | int) -> str:
@@ -75,17 +77,19 @@ def normalize_rfc_id(value: str | int) -> str:
     return f"RFC-{int(number):03d}"
 
 
-def load_rfc_register() -> dict[str, dict]:
-    return json.loads(RFC_REGISTER_PATH.read_text()) if RFC_REGISTER_PATH.exists() else {}
+def load_rfc_register(output_dir: Path) -> dict[str, dict]:
+    path = output_dir / RFC_REGISTER_PATH
+    return json.loads(path.read_text()) if path.exists() else {}
 
 
-def next_rfc_id(register: dict[str, dict]) -> str:
+def next_rfc_id(register: dict[str, dict], output_dir: Path) -> str:
     numbers = [int(rfc_id.removeprefix("RFC-")) for rfc_id in register]
-    numbers += [int(path.stem.removeprefix("RFC-")) for path in RFC_DIR.glob("RFC-*.md")]
+    numbers += [int(path.stem.removeprefix("RFC-")) for path in (output_dir / RFC_DIR).glob("RFC-*.md")]
     return normalize_rfc_id(max(numbers, default=0) + 1)
 
 
 class ProjectState(BaseModel):
+    project_code: str = ""
     project_name: str = ""
     project_brief: str = ""
     trigger_reason: str = "Project inception"
@@ -105,11 +109,21 @@ class ProjectState(BaseModel):
     performance_artifacts: dict[str, str] = {}
     s_curve: list[dict] = []
     saved_files: list[str] = []
+    commit: str = ""
     flow_started_at: float = 0.0
     run_metrics: dict[str, dict] = {}
 
 
 class ProjectManagementFlow(Flow[ProjectState]):
+    project: ProjectSetup | None = None
+
+    def _output_path(self, path: Path) -> Path:
+        return self.project.output_dir / path
+
+    def _record_saved(self, path: Path):
+        """Record a written file, relative to the project folder, to log and commit it."""
+        self.state.saved_files.append(str(path.relative_to(self.project.folder)))
+        print(f"Saved {path}")
 
     def _kickoff_crew(self, crew_base, inputs: dict) -> CrewOutput:
         """Kick off a crew, timing its latency and recording its run metrics."""
@@ -137,6 +151,7 @@ class ProjectManagementFlow(Flow[ProjectState]):
 
     def _save_artifacts(self, directory: Path, filenames: dict[str, str], produced: dict[str, str]):
         """Write the artifacts produced in this run, skipping empty and unchanged ones."""
+        directory = self._output_path(directory)
         directory.mkdir(parents=True, exist_ok=True)
         for key, content in produced.items():
             path = directory / filenames[key]
@@ -147,8 +162,7 @@ class ProjectManagementFlow(Flow[ProjectState]):
                 print(f"Unchanged {path}")
                 continue
             path.write_text(content)
-            self.state.saved_files.append(str(path))
-            print(f"Saved {path}")
+            self._record_saved(path)
 
     def _run_initiation_crew(self, affected: set[str] | None = None) -> dict[str, str]:
         inputs = {
@@ -271,7 +285,7 @@ class ProjectManagementFlow(Flow[ProjectState]):
 
         rfc = self.state.control_artifacts.get("change_request_rfc", "")
         rfc_id = self.state.rfc_identifier
-        register = load_rfc_register()
+        register = load_rfc_register(self.project.output_dir)
         if self.state.rfc_decision:
             register[rfc_id].update(status=self.state.rfc_decision, decided_on=date.today().isoformat())
         elif rfc.strip():
@@ -283,12 +297,14 @@ class ProjectManagementFlow(Flow[ProjectState]):
         else:
             return  # No RFC raised or decided in this run
         self._save_artifacts(RFC_DIR, {"change_request_rfc": f"{rfc_id}.md"}, {"change_request_rfc": rfc})
-        RFC_REGISTER_PATH.write_text(json.dumps(register, indent=2) + "\n")
-        print(f"{rfc_id} is {register[rfc_id]['status']} ({RFC_REGISTER_PATH})")
+        register_path = self._output_path(RFC_REGISTER_PATH)
+        register_path.write_text(json.dumps(register, indent=2) + "\n")
+        self._record_saved(register_path)
+        print(f"{rfc_id} is {register[rfc_id]['status']} ({register_path})")
 
     def _load_rfc_decision(self, payload: dict):
         """Set the RFC this run decides on, or allocate the ID for an RFC this run may raise."""
-        register = load_rfc_register()
+        register = load_rfc_register(self.project.output_dir)
         if "rfc_identifier" not in payload:
             if "rfc_approved" in payload:
                 pending = [rfc_id for rfc_id, rfc in register.items() if rfc["status"] == "pending"]
@@ -296,7 +312,7 @@ class ProjectManagementFlow(Flow[ProjectState]):
                     f"'rfc_approved' needs the 'rfc_identifier' of the RFC to decide on. "
                     f"Pending RFCs: {', '.join(pending) or 'none'}."
                 )
-            self.state.rfc_identifier = next_rfc_id(register)
+            self.state.rfc_identifier = next_rfc_id(register, self.project.output_dir)
             return
 
         rfc_id = normalize_rfc_id(payload["rfc_identifier"])
@@ -311,21 +327,21 @@ class ProjectManagementFlow(Flow[ProjectState]):
 
         self.state.rfc_identifier = rfc_id
         self.state.rfc_decision = "approved" if payload["rfc_approved"] else "rejected"
-        rfc = (RFC_DIR / f"{rfc_id}.md").read_text()
+        rfc = self._output_path(RFC_DIR / f"{rfc_id}.md").read_text()
         self.state.existing_artifacts["change_request_rfc"] = rfc
         self.state.scope_change_request = register[rfc_id].get("change_request") or rfc
 
-    @staticmethod
-    def _load_change_request(payload: dict) -> str:
-        """Return the change request given inline or as a file name in the input folder."""
+    def _load_change_request(self, payload: dict) -> str:
+        """Return the change request given inline or as a file name in the project's input folder."""
         filename = payload.get("scope_change_request_file")
         if not filename:
             return payload.get("scope_change_request", "")
         if payload.get("scope_change_request"):
             raise ValueError("Pass either 'scope_change_request' or 'scope_change_request_file', not both.")
-        path = INPUT_DIR / filename
-        if path.resolve().parent != INPUT_DIR.resolve():
-            raise ValueError(f"'scope_change_request_file' must be a file name in {INPUT_DIR}/, got {filename!r}.")
+        input_dir = self.project.input_dir
+        path = input_dir / filename
+        if path.resolve().parent != input_dir.resolve():
+            raise ValueError(f"'scope_change_request_file' must be a file name in {input_dir}/, got {filename!r}.")
         if not path.is_file():
             raise ValueError(f"Change request file not found: {path}")
         print(f"Using change request from {path}")
@@ -338,7 +354,15 @@ class ProjectManagementFlow(Flow[ProjectState]):
         if payload:
             print(f"Using trigger payload: {payload}")
 
-        self.state.project_name = payload.get("project_name", "Sample Project")
+        if not payload.get("project_code"):
+            raise ValueError("No project code provided: run 'uv run run_with_trigger <PROJECT_CODE> [<json payload>]'.")
+        self.project = load_project_setup(payload["project_code"])
+        self.state.project_code = self.project.code
+        self.state.project_name = self.project.name
+        print(f"Project folder: {self.project.folder}")
+        brief_path = self.project.input_dir / DEFAULT_BRIEF_NAME
+        progress_path = self.project.input_dir / DEFAULT_PROGRESS_NAME
+
         self.state.scope_change_request = self._load_change_request(payload)
         self.state.emerging_conditions = payload.get("emerging_conditions", "")
         self.state.status_date = payload.get("status_date", date.today().isoformat())
@@ -347,16 +371,16 @@ class ProjectManagementFlow(Flow[ProjectState]):
             self.state.progress_data = (
                 progress_data if isinstance(progress_data, str) else json.dumps(progress_data, indent=2)
             )
-        elif DEFAULT_PROGRESS_PATH.exists():
-            self.state.progress_data = DEFAULT_PROGRESS_PATH.read_text()
+        elif progress_path.exists():
+            self.state.progress_data = progress_path.read_text()
         if "project_brief" in payload:
             self.state.project_brief = payload["project_brief"]
-        elif DEFAULT_BRIEF_PATH.exists():
-            self.state.project_brief = DEFAULT_BRIEF_PATH.read_text()
+        elif brief_path.exists():
+            self.state.project_brief = brief_path.read_text()
         else:
             raise ValueError(
                 f"No project brief provided. Pass 'project_brief' in the trigger "
-                f"payload or create {DEFAULT_BRIEF_PATH}."
+                f"payload or create {brief_path}."
             )
 
         for directory, artifacts in (
@@ -366,7 +390,7 @@ class ProjectManagementFlow(Flow[ProjectState]):
             (PERFORMANCE_DIR, PERFORMANCE_ARTIFACTS),
         ):
             for key, filename in artifacts.items():
-                path = directory / filename
+                path = self._output_path(directory / filename)
                 if path.exists():
                     self.state.existing_artifacts[key] = path.read_text()
 
@@ -381,7 +405,7 @@ class ProjectManagementFlow(Flow[ProjectState]):
         elif self.state.scope_change_request:
             self.state.trigger_reason = "Change request"
 
-        print(f"Project: {self.state.project_name} ({self.state.trigger_reason})")
+        print(f"Project: {self.state.project_code} {self.state.project_name} ({self.state.trigger_reason})")
 
     @router(load_project_context)
     def route_trigger(self):
@@ -525,14 +549,14 @@ class ProjectManagementFlow(Flow[ProjectState]):
     def save_performance_artifacts(self):
         self._save_artifacts(PERFORMANCE_DIR, PERFORMANCE_ARTIFACTS, self.state.performance_artifacts)
 
-        with S_CURVE_PATH.open("w", newline="") as f:
+        s_curve_path = self._output_path(S_CURVE_PATH)
+        with s_curve_path.open("w", newline="") as f:
             writer = csv.DictWriter(
                 f, fieldnames=["period", "date", "cumulative_pv", "cumulative_ev", "cumulative_ac"]
             )
             writer.writeheader()
             writer.writerows(self.state.s_curve)
-        self.state.saved_files.append(str(S_CURVE_PATH))
-        print(f"Saved {S_CURVE_PATH}")
+        self._record_saved(s_curve_path)
 
     @listen(or_(save_performance_artifacts, "change_closed", "baseline_unchanged"))
     def log_run_metrics(self):
@@ -540,6 +564,7 @@ class ProjectManagementFlow(Flow[ProjectState]):
         crews = self.state.run_metrics
         run_metrics = {
             "run_timestamp": datetime.now().isoformat(timespec="seconds"),
+            "project_code": self.state.project_code,
             "project_name": self.state.project_name,
             "trigger_reason": self.state.trigger_reason,
             "change_decision": self.state.change_decision,
@@ -571,14 +596,41 @@ class ProjectManagementFlow(Flow[ProjectState]):
         print(f"Files saved: {len(self.state.saved_files)}")
         print("=" * 60)
 
-        RUN_METRICS_PATH.parent.mkdir(parents=True, exist_ok=True)
-        with RUN_METRICS_PATH.open("a") as f:
+        run_metrics_path = self._output_path(RUN_METRICS_PATH)
+        run_metrics_path.parent.mkdir(parents=True, exist_ok=True)
+        with run_metrics_path.open("a") as f:
             f.write(json.dumps(run_metrics) + "\n")
-        print(f"Appended run metrics to {RUN_METRICS_PATH}")
+        print(f"Appended run metrics to {run_metrics_path}")
+
+    @listen(log_run_metrics)
+    def commit_project_changes(self):
+        """Commit the documents this run changed, and its run metrics, in the project's repository."""
+        summary = [f"Trigger: {self.state.trigger_reason}"]
+        if self.state.change_decision:
+            summary.append(f"Change decision: {self.state.change_decision}")
+        if self.state.rfc_decision:
+            summary.append(f"{self.state.rfc_identifier}: {self.state.rfc_decision}")
+        summary.append("Changed documents:")
+        summary += [f"- {path}" for path in self.state.saved_files]
+        if not self.state.saved_files:
+            summary.append("- none")
+        message = f"{self.state.project_code}: {self.state.trigger_reason}\n\n" + "\n".join(summary)
+
+        run_metrics_path = self._output_path(RUN_METRICS_PATH).relative_to(self.project.folder)
+        paths = [*self.state.saved_files, str(run_metrics_path)]
+        self.state.commit = commit_changes(self.project, paths, message)
+        if self.state.commit:
+            print(f"Committed {len(paths)} files to {self.project.folder} ({self.state.commit})")
+        else:
+            print(f"Nothing to commit in {self.project.folder}")
 
 
 def kickoff():
-    ProjectManagementFlow().kickoff()
+    """Disabled: 'crewai run' calls this, but every run must name the project it works on."""
+    raise SystemExit(
+        "'crewai run' is disabled: each run works on one project of the project setup document. "
+        "Run 'uv run run_with_trigger <PROJECT_CODE> [<json payload>]' instead."
+    )
 
 
 def plot():
@@ -587,18 +639,20 @@ def plot():
 
 def run_with_trigger():
     """
-    Run the flow with trigger payload.
+    Run the flow on a project of the project setup document:
+    uv run run_with_trigger <PROJECT_CODE> [<json payload>]
     """
     import json
     import sys
 
     if len(sys.argv) < 2:
-        raise Exception("No trigger payload provided. Please provide JSON payload as argument.")
+        raise SystemExit("Usage: uv run run_with_trigger <PROJECT_CODE> [<json payload>]")
 
     try:
-        trigger_payload = json.loads(sys.argv[1])
+        trigger_payload = json.loads(sys.argv[2]) if len(sys.argv) > 2 else {}
     except json.JSONDecodeError:
         raise Exception("Invalid JSON payload provided as argument")
+    trigger_payload["project_code"] = sys.argv[1]
 
     flow = ProjectManagementFlow()
 

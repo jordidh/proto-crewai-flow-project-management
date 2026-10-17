@@ -82,13 +82,27 @@ uv add crewai-tools
 
 ## Running
 
-To kickstart your flow and begin execution, run this from the root folder of your project:
+Several projects can be managed at the same time. The project setup document `projects.yaml` relates each project code to the folder that holds its input and output documents:
 
-```bash
-crewai run
+```yaml
+projects:
+  PRJ-001:
+    name: Sample Project
+    folder: ../pm-sample-project   # absolute, or relative to projects.yaml
+    input_dir: input               # relative to folder (default: input)
+    output_dir: output             # relative to folder (default: output)
 ```
 
-This command initializes the project-management Flow as defined in your configuration.
+Each project folder must be inside a git repository (for example, one GitHub repository per project): at the end of every run the flow commits the documents it changed and the run metrics there, with the project code and trigger in the commit message. Only those files are committed, so other staged changes in the repository are left alone; pushing stays up to you. Set `PROJECTS_SETUP_PATH` to use a setup document stored elsewhere.
+
+`crewai run` is disabled, because every run must name the project it works on. Run the flow from the root folder of this repository with the project code, and an optional JSON payload:
+
+```bash
+uv run run_with_trigger PRJ-001
+uv run run_with_trigger PRJ-001 '{"status_date": "2026-11-01"}'
+```
+
+The project name comes from the setup document. Below, `input/` and `output/` mean the input and output folders of the project.
 
 The flow reads the brief from `input/project_brief.md` (and optional actuals from `input/progress_data.md`), runs four crews in sequence and writes their artifacts under `output/`:
 
@@ -103,8 +117,8 @@ Each run appends its KPIs (flow duration, per-crew latency, per-task time and ou
 
 ### First run
 
-To try it, write a brief into `input/project_brief.md` and run `crewai run`, or use the trigger:
-uv run run_with_trigger `'{"project_name": "X", "project_brief": "...", "trigger_reason": "Project inception"}'`
+To try it, add the project to `projects.yaml`, write a brief into the project's `input/project_brief.md` and run `uv run run_with_trigger PRJ-001`, or pass the brief in the payload:
+uv run run_with_trigger PRJ-001 `'{"project_brief": "...", "trigger_reason": "Project inception"}'`
 
 After the first full run, crewai traces enable will record each step of the run if you want to see how the agents reached their output.
 
@@ -113,13 +127,13 @@ After the first full run, crewai traces enable will record each step of the run 
 Once a baseline exists in `output/`, a run with a `scope_change_request` doesn't regenerate everything. The Risk and Change Management crew first evaluates the change against the saved baseline and lists the affected artifacts; then only those documents are updated:
 
 ```bash
-uv run run_with_trigger '{"project_name": "X", "scope_change_request": "Add SSO login to the customer portal"}'
+uv run run_with_trigger PRJ-001 '{"scope_change_request": "Add SSO login to the customer portal"}'
 ```
 
 For a longer request, write it to a file in `input/` and pass its name instead (the two keys can't be combined):
 
 ```bash
-uv run run_with_trigger '{"project_name": "X", "scope_change_request_file": "20261024-rfc-01.md"}'
+uv run run_with_trigger PRJ-001 '{"scope_change_request_file": "20261024-rfc-01.md"}'
 ```
 
 - **No change** (`no_change`): only the risk register and change log are updated.
@@ -130,9 +144,9 @@ Once the Change Control Board decides, run the flow again with the RFC ID (`2`, 
 
 ```bash
 # Approve: records the approval, then updates only the affected documents
-uv run run_with_trigger '{"project_name": "X", "rfc_identifier": "RFC-002", "rfc_approved": true}'
+uv run run_with_trigger PRJ-001 '{"rfc_identifier": "RFC-002", "rfc_approved": true}'
 # Reject: records the rejection in the change log and RFC; the baselines stay unchanged
-uv run run_with_trigger '{"project_name": "X", "rfc_identifier": "RFC-002", "rfc_approved": false}'
+uv run run_with_trigger PRJ-001 '{"rfc_identifier": "RFC-002", "rfc_approved": false}'
 ```
 
 A decision run takes the change from the RFC register, so it doesn't accept `scope_change_request`. Only a pending RFC can be decided, and `rfc_approved` without `rfc_identifier` is refused with the list of pending RFCs. Unchanged documents are never rewritten, and each run logs its `change_decision`, `rfc_identifier`, `rfc_decision`, `affected_artifacts` and `saved_files` in `output/logs/run_metrics.jsonl`.
@@ -143,17 +157,18 @@ A decision run takes the change from the RFC register, so it doesn't accept `sco
 
 - Each crew lives in `src/project_management/crews/<crew_name>/`, with its agents and tasks in `config/agents.yaml` and `config/tasks.yaml` and its logic in `<crew_name>.py`
 - `src/project_management/main.py` orchestrates the flow and saves the artifacts
+- `src/project_management/project_setup.py` looks up a project code in `projects.yaml` and commits each run's changes in the project's repository
 - `src/project_management/metrics.py` times crews and tasks and collects the run KPIs
 - `src/project_management/task_selection.py` lets a crew run only the tasks whose artifacts a change affects
 
 ### Flow diagram
 
-Version v0.2.0
+Version v0.3.0
 
 ```mermaid
 flowchart TD
-    Start([kickoff / run_with_trigger]) --> A
-    A["<b>load_project_context</b> @start<br/>payload or input/*.md<br/>load existing artifacts from output/*"]
+    Start(["run_with_trigger &lt;PROJECT_CODE&gt;"]) --> A
+    A["<b>load_project_context</b> @start<br/>project folder from projects.yaml<br/>payload or input/*.md<br/>load existing artifacts from output/*"]
     A --> R{"<b>route_trigger</b><br/>change request + saved baseline?"}
 
     R -->|full_cycle| B["<b>run_initiation_and_governance</b>"] --> B2[save_initiation_artifacts]
@@ -172,6 +187,7 @@ flowchart TD
 
     D2 --> E["<b>run_performance_and_control</b><br/>EVM: CPI / SPI"] --> E2[save_performance_artifacts]
     E2 --> L["<b>log_run_metrics</b><br/>output/logs/run_metrics.jsonl"]
+    L --> G["<b>commit_project_changes</b><br/>git commit in the project's repository"]
 
     classDef crew fill:#dbeafe,stroke:#2563eb
     classDef save fill:#dcfce7,stroke:#16a34a
@@ -197,7 +213,22 @@ Iteration 2 - KPI and logs to measure performance and reliability. Steps:
 1. Identify the KPI and values to measure
 2. Add the KPIs and log the results
 
+## Roadmap
+
+- Add risk database, with a project type that can be used by LLM to identify if it can be applied to the current project, to build a more real world project roisk identification.
+
 ## Changelog
+
+### v0.3.0 — 2026-10-17
+
+**Added**
+- Several projects can be managed at the same time: the project setup document `projects.yaml` relates each project code to a folder holding its input and output documents (`PROJECTS_SETUP_PATH` points to a setup document stored elsewhere).
+- At the end of each run, the documents it changed and its run metrics are committed in the project's git repository, with the project code, trigger and decisions in the commit message. Other staged changes there are left alone.
+
+**Changed**
+- `uv run run_with_trigger <PROJECT_CODE> [<json payload>]` takes the project code as its first argument; the payload is optional, and the project name comes from the setup document instead of `project_name`.
+- The brief, progress data, change request files, artifacts, RFCs and run metrics are read from and written to the project's folders instead of this repository's `input/` and `output/`.
+- `crewai run` is disabled and points to `run_with_trigger`, since every run must name its project.
 
 ### v0.2.0 — 2026-10-17
 
