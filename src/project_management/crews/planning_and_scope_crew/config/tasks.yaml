@@ -80,6 +80,12 @@ task_define_requirements_and_dod:
     Team Charter (quality expectations agreed by the team):
     {team_charter}
 
+    Approved WBS and backlog (if the WBS and backlog task ran before this one,
+    use its output instead):
+    {existing_wbs}
+
+    {existing_backlog}
+
     Previously approved artifacts (empty during baseline planning):
     {existing_requirements_specification}
 

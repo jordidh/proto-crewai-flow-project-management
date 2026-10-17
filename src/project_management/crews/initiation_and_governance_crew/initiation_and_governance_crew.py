@@ -4,6 +4,13 @@ from crewai.project import CrewBase, after_kickoff, agent, before_kickoff, crew,
 from pydantic import BaseModel, Field
 
 from project_management.metrics import CrewRunMetrics, record_task_completed
+from project_management.task_selection import select_tasks
+
+# Artifacts produced by each task, used to run only the tasks a change affects
+TASK_ARTIFACTS = {
+    "task_create_business_case_and_charter": {"business_case", "project_charter"},
+    "task_map_stakeholders_and_team_charter": {"stakeholder_register", "team_charter"},
+}
 
 
 class BusinessCaseAndCharter(BaseModel):
@@ -31,8 +38,9 @@ class InitiationAndGovernanceCrew:
     agents_config = "config/agents.yaml"
     tasks_config = "config/tasks.yaml"
 
-    def __init__(self) -> None:
+    def __init__(self, affected_artifacts: set[str] | None = None) -> None:
         self.run_metrics = CrewRunMetrics(type(self).__name__)
+        self.affected_artifacts = affected_artifacts
 
     @before_kickoff
     def start_run_metrics(self, inputs):
@@ -74,7 +82,7 @@ class InitiationAndGovernanceCrew:
         """Creates the Initiation and Governance Crew"""
         return Crew(
             agents=self.agents,
-            tasks=self.tasks,
+            tasks=select_tasks(self.tasks, TASK_ARTIFACTS, self.affected_artifacts),
             process=Process.sequential,
             task_callback=record_task_completed,
             verbose=True,

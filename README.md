@@ -5,10 +5,11 @@ Welcome to the proto-crewai-flow-project-management project, powered by [crewAI]
 ## Setup the project
 
 Requeriments:
+
 - Python 3.10+
-- Virtual Environments (https://www.w3schools.com/PYTHON/python_virtualenv.asp)
+- [Virtual Environments](https://www.w3schools.com/PYTHON/python_virtualenv.asp)
 - VS Code
-- CrewAI (https://crewai.com/, https://docs.crewai.com/v1.15.2/en/installation)
+- [CrewAI](https://docs.crewai.com/v1.15.2/en/installation)
 - LLM SDKs
 - Dotenv
 
@@ -95,7 +96,7 @@ The flow reads the brief from `input/project_brief.md` (and optional actuals fro
 |------|-----------|
 | Initiation and Governance | `output/initiation/` — business case, project charter, stakeholder register, team charter |
 | Planning and Scope | `output/planning/` — WBS, backlog, schedule model, requirements specification, definition of done |
-| Risk and Change Management | `output/control/` — risk register, change log, change request (RFC) when a tolerance is breached |
+| Risk and Change Management | `output/control/` — risk register, change log, and one `rfcs/RFC-<NNN>.md` per change request that breaches a tolerance, with their status in `rfc_register.json` |
 | Performance and Control | `output/performance/` — EVM metrics, S-curve CSV, project dashboard, status report |
 
 Each run appends its KPIs (flow duration, per-crew latency, per-task time and output size, tasks completed, token usage) to `output/logs/run_metrics.jsonl`. Existing artifacts in `output/` are fed back to the crews on the next run so they update rather than start over.
@@ -107,6 +108,35 @@ uv run run_with_trigger `'{"project_name": "X", "project_brief": "...", "trigger
 
 After the first full run, crewai traces enable will record each step of the run if you want to see how the agents reached their output.
 
+### Change requests
+
+Once a baseline exists in `output/`, a run with a `scope_change_request` doesn't regenerate everything. The Risk and Change Management crew first evaluates the change against the saved baseline and lists the affected artifacts; then only those documents are updated:
+
+```bash
+uv run run_with_trigger '{"project_name": "X", "scope_change_request": "Add SSO login to the customer portal"}'
+```
+
+For a longer request, write it to a file in `input/` and pass its name instead (the two keys can't be combined):
+
+```bash
+uv run run_with_trigger '{"project_name": "X", "scope_change_request_file": "20261024-rfc-01.md"}'
+```
+
+- **No change** (`no_change`): only the risk register and change log are updated.
+- **Fast-track replan** (`fast_track_replan`, within tolerance: critical path delay ≤ 3 days and cost delta ≤ 5%): the affected initiation and planning documents are updated, and the EVM metrics, dashboard and status report are recalculated only if the cost or schedule baseline changed.
+- **Formal RFC** (`formal_rfc`, tolerance breached): the risk register and change log are updated, the RFC is written to `output/control/rfcs/RFC-<NNN>.md` with the next free ID, and the baselines stay unchanged. The run prints the RFC ID, and `output/control/rfc_register.json` tracks each RFC's status (`pending`, `approved`, `rejected`), so several RFCs can be pending at the same time.
+
+Once the Change Control Board decides, run the flow again with the RFC ID (`2`, `002` and `RFC-002` are equivalent):
+
+```bash
+# Approve: records the approval, then updates only the affected documents
+uv run run_with_trigger '{"project_name": "X", "rfc_identifier": "RFC-002", "rfc_approved": true}'
+# Reject: records the rejection in the change log and RFC; the baselines stay unchanged
+uv run run_with_trigger '{"project_name": "X", "rfc_identifier": "RFC-002", "rfc_approved": false}'
+```
+
+A decision run takes the change from the RFC register, so it doesn't accept `scope_change_request`. Only a pending RFC can be decided, and `rfc_approved` without `rfc_identifier` is refused with the list of pending RFCs. Unchanged documents are never rewritten, and each run logs its `change_decision`, `rfc_identifier`, `rfc_decision`, `affected_artifacts` and `saved_files` in `output/logs/run_metrics.jsonl`.
+
 ## Project Structure
 
 **Add your `OPENAI_API_KEY` into the `.env` file**
@@ -114,12 +144,47 @@ After the first full run, crewai traces enable will record each step of the run 
 - Each crew lives in `src/project_management/crews/<crew_name>/`, with its agents and tasks in `config/agents.yaml` and `config/tasks.yaml` and its logic in `<crew_name>.py`
 - `src/project_management/main.py` orchestrates the flow and saves the artifacts
 - `src/project_management/metrics.py` times crews and tasks and collects the run KPIs
+- `src/project_management/task_selection.py` lets a crew run only the tasks whose artifacts a change affects
+
+### Flow diagram
+
+Version v0.2.0
+
+```mermaid
+flowchart TD
+    Start([kickoff / run_with_trigger]) --> A
+    A["<b>load_project_context</b> @start<br/>payload or input/*.md<br/>load existing artifacts from output/*"]
+    A --> R{"<b>route_trigger</b><br/>change request + saved baseline?"}
+
+    R -->|full_cycle| B["<b>run_initiation_and_governance</b>"] --> B2[save_initiation_artifacts]
+    B2 --> C["<b>run_planning_and_scope</b>"] --> C2[save_planning_artifacts]
+    C2 --> D["<b>run_risk_and_change_management</b>"] --> D2[save_control_artifacts]
+
+    R -->|change_request| X["<b>evaluate_change</b><br/>Risk & Change crew vs. saved baseline<br/>→ decision + affected_artifacts<br/><i>(RFC decision: change log/RFC task only)</i>"]
+    X --> X2[save_change_control_artifacts]
+    X2 --> Y{"<b>route_change_decision</b>"}
+    Y -->|"fast_track_replan,<br/>or RFC approved"| U["<b>update_affected_baselines</b><br/>only the Initiation / Planning tasks<br/>that produce affected artifacts"]
+    Y -->|"no_change, RFC rejected,<br/>or new RFC pending"| L
+    U --> U2[save_updated_baselines]
+    U2 --> Z{"<b>route_performance_update</b><br/>business_case or schedule_model changed?"}
+    Z -->|baseline_changed| E
+    Z -->|baseline_unchanged| L
+
+    D2 --> E["<b>run_performance_and_control</b><br/>EVM: CPI / SPI"] --> E2[save_performance_artifacts]
+    E2 --> L["<b>log_run_metrics</b><br/>output/logs/run_metrics.jsonl"]
+
+    classDef crew fill:#dbeafe,stroke:#2563eb
+    classDef save fill:#dcfce7,stroke:#16a34a
+    class B,C,D,X,U,E crew
+    class B2,C2,D2,X2,U2,E2 save
+```
 
 ## How to create a CrewAI project
 
 Steps done to create this project.
 
 Iteration 1 - Crew creation. Steps:
+
 1. Identify the general architecture: how may crews it will be needed, what will do each crew and a name
 2. Specify each crew:
     2.1. Specify the agents: name, role and a description
@@ -128,11 +193,24 @@ Iteration 1 - Crew creation. Steps:
 4. Test running `crewai run` and inspect and analyze the logs and the artifacts generated
 
 Iteration 2 - KPI and logs to measure performance and reliability. Steps:
+
 1. Identify the KPI and values to measure
 2. Add the KPIs and log the results
 
-
 ## Changelog
+
+### v0.2.0 — 2026-10-17
+
+**Added**
+- Change requests no longer regenerate every document. Once a baseline exists, the Risk and Change Management crew evaluates the change against it first, and only the affected documents are updated; EVM metrics, dashboard and status report are recalculated only when the cost or schedule baseline changes.
+- Formal RFCs get a unique ID (`RFC-001`, `RFC-002`, …), are saved as `output/control/rfcs/RFC-<NNN>.md`, and are tracked in `output/control/rfc_register.json`, so several RFCs can be pending at the same time.
+- Approve or reject a pending RFC with a second run: `{"rfc_identifier": "RFC-002", "rfc_approved": true}` (or `false`). Approval applies the change; rejection records it and leaves the baselines unchanged.
+- The change request can be read from a file in `input/` with `"scope_change_request_file": "<name>.md"`.
+- The run log records the change decision, RFC ID and decision, affected artifacts, and the files saved in each run.
+
+**Changed**
+- Documents whose content hasn't changed are no longer rewritten.
+- The single `output/control/change_request_RFC.md` is replaced by one file per RFC under `output/control/rfcs/`.
 
 ### v0.1.0 — 2026-10-16
 

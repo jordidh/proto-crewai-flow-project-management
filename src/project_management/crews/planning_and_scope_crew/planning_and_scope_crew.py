@@ -6,6 +6,13 @@ from crewai.project import CrewBase, after_kickoff, agent, before_kickoff, crew,
 from pydantic import BaseModel, Field
 
 from project_management.metrics import CrewRunMetrics, record_task_completed
+from project_management.task_selection import select_tasks
+
+# Artifacts produced by each task, used to run only the tasks a change affects
+TASK_ARTIFACTS = {
+    "task_build_wbs_and_backlog": {"wbs", "backlog", "schedule_model"},
+    "task_define_requirements_and_dod": {"requirements_specification", "definition_of_done"},
+}
 
 
 class ChangelogEntry(BaseModel):
@@ -76,8 +83,9 @@ class PlanningAndScopeCrew:
     agents_config = "config/agents.yaml"
     tasks_config = "config/tasks.yaml"
 
-    def __init__(self) -> None:
+    def __init__(self, affected_artifacts: set[str] | None = None) -> None:
         self.run_metrics = CrewRunMetrics(type(self).__name__)
+        self.affected_artifacts = affected_artifacts
 
     @before_kickoff
     def start_run_metrics(self, inputs):
@@ -119,7 +127,7 @@ class PlanningAndScopeCrew:
         """Creates the Planning and Scope Crew"""
         return Crew(
             agents=self.agents,
-            tasks=self.tasks,
+            tasks=select_tasks(self.tasks, TASK_ARTIFACTS, self.affected_artifacts),
             process=Process.sequential,
             task_callback=record_task_completed,
             verbose=True,

@@ -8,6 +8,10 @@ task_create_business_case_and_charter:
     Preliminary input:
     {project_brief}
 
+    Approved change request (empty unless a change renegotiates the strategic
+    objectives):
+    {change_request}
+
     Previously approved artifacts (empty on project inception):
     {existing_business_case}
 
@@ -53,6 +57,16 @@ task_map_stakeholders_and_team_charter:
 
     Preliminary input:
     {project_brief}
+
+    Approved change request (empty unless a change renegotiates the strategic
+    objectives):
+    {change_request}
+
+    Approved Business Case and Project Charter (if the business case and
+    charter task ran before this one, use its output instead):
+    {business_case}
+
+    {project_charter}
 
     Previously approved artifacts (empty on project inception):
     {existing_stakeholder_register}

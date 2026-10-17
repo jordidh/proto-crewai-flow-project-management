@@ -77,6 +77,13 @@ task_evaluate_and_log_changes:
     Proposed change request (empty when no change was proposed):
     {change_request}
 
+    Change approval status:
+    {change_approval}
+
+    RFC ID: {rfc_identifier}. Use exactly this ID for the RFC and for the
+    change's Change Log entry if the change needs an RFC, or when recording
+    the decision on that RFC.
+
     Emerging issues, risks, or external conditions (may be empty):
     {emerging_conditions}
 
@@ -85,6 +92,16 @@ task_evaluate_and_log_changes:
 
     Schedule model (schedule baseline and critical path):
     {schedule_model}
+
+    WBS:
+    {wbs}
+
+    Backlog:
+    {backlog}
+
+    Risk Register (if the risk register task ran before this one, use its
+    output instead):
+    {existing_risk_register}
 
     Previously approved artifacts (empty on first assessment):
     {existing_change_log}
@@ -114,6 +131,15 @@ task_evaluate_and_log_changes:
        approvals (Change Control Board per the governance model), and the
        approval/decision section. Leave it empty when no threshold is
        breached.
+
+    Also list the affected artifacts: every baseline document that has to
+    be updated to implement the proposed changes (business_case,
+    project_charter, stakeholder_register, team_charter, wbs, backlog,
+    schedule_model, requirements_specification, definition_of_done). Include
+    schedule_model whenever the WBS or backlog changes, and the business case
+    or charter only when the change alters the strategic objectives, the
+    budget, or the high-level scope. Leave the list empty when no change was
+    proposed.
 
     Versioning rules for EACH document:
     - Start with a header block containing the document title, project name,

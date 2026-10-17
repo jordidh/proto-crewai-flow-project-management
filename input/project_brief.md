@@ -37,12 +37,10 @@ The goal of this project is to build a robust, scalable, and secure backend REST
 * SKU registration referencing quantities, UoM, lot/batch, and expiry dates (either in locations or within containers).
 * Status handling (`available`, `blocked`, `quarantine`).
 * Complex stock operations:
-* Full and partial stock movements.
-* Record splitting and merging (summing matching SKU/lot/status).
-* Grouping stock into new containers (palletization/packing) and ungrouping (releasing stock directly into the parent location).
-
-
-* Mandatory adjustment and write-off reason codes.
+  * Full and partial stock movements.
+  * Record splitting and merging (summing matching SKU/lot/status).
+  * Grouping stock into new containers (palletization/packing) and ungrouping (releasing stock directly into the parent location).
+  * Mandatory adjustment and write-off reason codes.
 
 
 4. **Audit Trail & Traceability (REQ-020):**
