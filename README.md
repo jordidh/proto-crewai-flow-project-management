@@ -215,7 +215,11 @@ Iteration 2 - KPI and logs to measure performance and reliability. Steps:
 
 ## Roadmap
 
-- Add risk database, with a project type that can be used by LLM to identify if it can be applied to the current project, to build a more real world project roisk identification.
+- Add a risk database, with a project type that can be used by LLM to identify if it can be applied to the current project, to build a more real world project risk identification.
+- Add a learned lessons to improve the project management and detect rising problems.
+- Add tests
+- Add guardrails
+- Add RAG
 
 ## Changelog
 
